@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>業務実態調査|毎日入力</title>
+
+<!-- ============================================================
+  業務実態調査フォーム(LINEミニアプリ版)
+  非エンジニアの方へ:
+  書き換えるのは【設定エリア】の2行と、
+  必要に応じて【スタッフ名簿】だけです。
+  それ以外は触らなくて動きます。
+============================================================ -->
+
+<style>
+  :root{
+    --green:#06C755;          /* LINEの緑 */
+    --green-dark:#05a648;
+    --ink:#1f2a24;
+    --ink-sub:#5f6b64;
+    --field-bg:#f4f6f5;
+    --line:#e3e8e5;
+    --warn:#e07b39;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+    background:#fafbfa;
+    color:var(--ink);
+    -webkit-text-size-adjust:100%;
+  }
+  .container{max-width:480px;margin:0 auto;padding:14px 14px 110px;}
+
+  /* 名前の表示ボックス */
+  .autoname{
+    background:#eefaf3;border:1px solid #bfe8d2;border-radius:10px;
+    padding:10px 12px;font-size:13px;line-height:1.6;margin-bottom:14px;
+  }
+  .autoname .who{font-weight:700;font-size:15px;}
+  .autoname .note{color:var(--ink-sub);font-size:11px;}
+  .autoname.first,.autoname.testmode{background:#fdf3ea;border-color:#f0d3b8;}
+  .autoname select,.autoname input[type="text"]{
+    width:100%;font-size:16px;padding:11px;margin-top:8px;
+    border:1px solid var(--line);border-radius:8px;background:#fff;
+  }
+
+  .card{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-bottom:12px;
+  }
+  .card h3{
+    font-size:12px;color:var(--ink-sub);font-weight:700;
+    margin-bottom:10px;letter-spacing:.05em;
+  }
+  .card h3 .req{color:var(--warn);font-size:10px;margin-left:6px;}
+  .field{margin-bottom:12px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;}
+  .field select,.field input[type="date"],.field input[type="text"]{
+    width:100%;font-size:16px;padding:12px;
+    border:1px solid var(--line);border-radius:10px;
+    background:var(--field-bg);color:var(--ink);
+    -webkit-appearance:none;appearance:none;
+  }
+  .field select:focus,.field input:focus{
+    outline:2px solid var(--green);outline-offset:1px;background:#fff;
+  }
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+
+  /* − / + の件数ボタン */
+  .stepper{
+    display:flex;align-items:center;
+    border:1px solid var(--line);border-radius:10px;
+    overflow:hidden;background:var(--field-bg);
+  }
+  .stepper button{
+    width:52px;height:48px;border:none;background:#fff;
+    font-size:22px;color:var(--green);font-weight:700;cursor:pointer;
+  }
+  .stepper button:active{background:#eefaf3;}
+  .stepper .val{flex:1;text-align:center;font-size:18px;font-weight:700;}
+
+  /* 折りたたみ(あった日だけ入力) */
+  details.optional{
+    background:#fff;border:1px solid var(--line);
+    border-radius:12px;margin-bottom:12px;
+  }
+  details.optional summary{
+    list-style:none;padding:14px;font-size:14px;font-weight:700;
+    cursor:pointer;display:flex;align-items:center;
+  }
+  details.optional summary::-webkit-details-marker{display:none;}
+  details.optional summary .tag{
+    font-size:10px;color:var(--ink-sub);font-weight:400;margin-left:8px;
+  }
+  details.optional summary::after{
+    content:"＋";margin-left:auto;color:var(--green);font-size:16px;
+  }
+  details.optional[open] summary::after{content:"－";}
+  details.optional .inner{
+    padding:12px 14px 14px;border-top:1px solid var(--line);
+  }
+
+  /* 送信ボタン(画面下に固定) */
+  .submit-bar{
+    position:fixed;left:0;right:0;bottom:0;
+    background:rgba(255,255,255,.97);border-top:1px solid var(--line);
+    padding:10px 14px calc(14px + env(safe-area-inset-bottom));
+  }
+  .submit-bar .inner-wrap{max-width:480px;margin:0 auto;}
+  .submit-btn{
+    width:100%;background:var(--green);color:#fff;border:none;
+    border-radius:12px;padding:15px 0;font-size:16px;font-weight:700;
+    cursor:pointer;
+  }
+  .submit-btn:active{background:var(--green-dark);}
+  .submit-btn:disabled{background:#b7c4bd;}
+  .submit-note{text-align:center;font-size:11px;color:var(--ink-sub);margin-top:6px;}
+
+  /* エラー表示 */
+  .error-box{
+    display:none;
+    background:#fdeeee;border:1px solid #f2c4c4;border-radius:10px;
+    padding:10px 12px;font-size:13px;color:#a33;margin-bottom:12px;
+  }
+
+  /* 送信完了画面 */
+  #donePage{
+    display:none;text-align:center;padding:70px 20px;
+  }
+  #donePage .mark{font-size:52px;color:var(--green);}
+  #donePage h2{font-size:18px;margin:14px 0 8px;}
+  #donePage p{font-size:13px;color:var(--ink-sub);line-height:1.8;}
+  #donePage button{
+    margin-top:24px;background:var(--green);color:#fff;border:none;
+    border-radius:12px;padding:13px 40px;font-size:15px;font-weight:700;
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="formPage">
+
+  <!-- 名前(自動認識/初回登録の結果がここに出ます) -->
+  <div class="autoname" id="nameBox">
+    <div class="who" id="userName">読み込み中…</div>
+    <div class="note" id="userNote">LINEのアカウントを確認しています</div>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- ===== 基本(必須) ===== -->
+  <div class="card">
+    <h3>基本<span class="req">必須</span></h3>
+    <div class="row2">
+      <div class="field">
+        <label for="f_date">日付</label>
+        <input type="date" id="f_date">
+      </div>
+      <div class="field">
+        <label for="f_kinmu">勤務時間</label>
+        <select id="f_kinmu"></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 訪問(必須) ===== -->
+  <div class="card">
+    <h3>訪問<span class="req">必須</span></h3>
+    <div class="field">
+      <label>訪問件数</label>
+      <div class="stepper">
+        <button type="button" onclick="step('f_houmon_ken',-1)">−</button>
+        <span class="val" id="f_houmon_ken">0</span>
+        <button type="button" onclick="step('f_houmon_ken',1)">＋</button>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="f_houmon_time">訪問・移動時間</label>
+        <select id="f_houmon_time"></select>
+      </div>
+      <div class="field">
+        <label for="f_kiroku_time">記録時間</label>
+        <select id="f_kiroku_time"></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 報告書(あった日だけ) ===== -->
+  <details class="optional">
+    <summary>報告書<span class="tag">あった日だけ</span></summary>
+    <div class="inner">
+      <div class="row2">
+        <div class="field">
+          <label>件数</label>
+          <div class="stepper">
+            <button type="button" onclick="step('f_houkoku_ken',-1)">−</button>
+            <span class="val" id="f_houkoku_ken">0</span>
+            <button type="button" onclick="step('f_houkoku_ken',1)">＋</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f_houkoku_time">時間</label>
+          <select id="f_houkoku_time"></select>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- ===== 連携(あった日だけ) ===== -->
+  <details class="optional">
+    <summary>連携<span class="tag">あった日だけ</span></summary>
+    <div class="inner">
+      <div class="row2">
+        <div class="field">
+          <label>件数</label>
+          <div class="stepper">
+            <button type="button" onclick="step('f_renkei_ken',-1)">−</button>
+            <span class="val" id="f_renkei_ken">0</span>
+            <button type="button" onclick="step('f_renkei_ken',1)">＋</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f_renkei_time">時間</label>
+          <select id="f_renkei_time"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f_renkei_naiyo">主な連携内容</label>
+        <select id="f_renkei_naiyo">
+          <option value="">(選択してください)</option>
+          <option>ケアマネ連携</option>
+          <option>主治医・医師連携</option>
+          <option>家族連携</option>
+          <option>病院・MSW連携</option>
+          <option>包括支援センター連携</option>
+          <option>多職種連携</option>
+          <option>退院前カンファ</option>
+          <option>サービス担当者会議</option>
+          <option>地域事業所訪問</option>
+          <option>空き状況案内</option>
+          <option>新規相談対応</option>
+          <option>行政・保険者連携</option>
+          <option>利用者支援調整</option>
+          <option>地域・営業</option>
+          <option>その他連携</option>
+        </select>
+      </div>
+    </div>
+  </details>
+
+  <!-- ===== 教育(あった日だけ) ===== -->
+  <details class="optional">
+    <summary>教育<span class="tag">あった日だけ</span></summary>
+    <div class="inner">
+      <div class="row2">
+        <div class="field">
+          <label>件数</label>
+          <div class="stepper">
+            <button type="button" onclick="step('f_kyoiku_ken',-1)">−</button>
+            <span class="val" id="f_kyoiku_ken">0</span>
+            <button type="button" onclick="step('f_kyoiku_ken',1)">＋</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f_kyoiku_time">時間</label>
+          <select id="f_kyoiku_time"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f_kyoiku_naiyo">主な教育内容</label>
+        <select id="f_kyoiku_naiyo">
+          <option value="">(選択してください)</option>
+          <option>OJT実施</option><option>OJT受講</option>
+          <option>同行指導実施</option><option>同行指導受講</option>
+          <option>研修参加</option><option>研修準備・講師</option>
+          <option>勉強会参加</option><option>勉強会講師</option>
+          <option>実習指導</option><option>新人教育</option>
+          <option>ケース検討</option><option>その他教育</option>
+        </select>
+      </div>
+    </div>
+  </details>
+
+  <!-- ===== 改善・その他(あった日だけ) ===== -->
+  <details class="optional">
+    <summary>改善・その他<span class="tag">あった日だけ</span></summary>
+    <div class="inner">
+      <div class="row2">
+        <div class="field">
+          <label>改善件数</label>
+          <div class="stepper">
+            <button type="button" onclick="step('f_kaizen_ken',-1)">−</button>
+            <span class="val" id="f_kaizen_ken">0</span>
+            <button type="button" onclick="step('f_kaizen_ken',1)">＋</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f_kaizen_time">改善時間</label>
+          <select id="f_kaizen_time"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f_kaizen_naiyo">主な改善内容</label>
+        <select id="f_kaizen_naiyo">
+          <option value="">(選択してください)</option>
+          <option>WT活動</option><option>マニュアル整備</option>
+          <option>業務フロー改善</option><option>DX・ICT</option>
+          <option>記録効率化</option><option>報告書標準化</option>
+          <option>連携ルール整備</option><option>会議</option>
+          <option>品質管理</option><option>業務改善提案</option>
+          <option>物品・環境整備</option><option>その他改善</option>
+        </select>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="f_sonota_time">その他時間</label>
+          <select id="f_sonota_time"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f_sonota_naiyo">その他の内容(あれば)</label>
+        <input type="text" id="f_sonota_naiyo" placeholder="例:物品整理 30分">
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<!-- 送信ボタン -->
+<div class="submit-bar" id="submitBar">
+  <div class="inner-wrap">
+    <button class="submit-btn" id="submitBtn" onclick="submitForm()">この内容で送信する</button>
+    <div class="submit-note">送信後、トークに「✓ 受付完了」が届きます</div>
+  </div>
+</div>
+
+<!-- 送信完了画面 -->
+<div id="donePage">
+  <div class="mark">✓</div>
+  <h2>送信しました</h2>
+  <p id="doneMsg">今日もおつかれさまでした。<br>訂正するときは、もう一度入力して送信してください。</p>
+  <button type="button" onclick="closeApp()">閉じる</button>
+</div>
+
+<!-- LINEの部品(LIFF SDK・公式)を読み込む -->
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<script>
+/* ============================================================
+   【設定エリア】書き換えるのはこの2行だけ!
+   ------------------------------------------------------------
+   ① LIFF_ID:
+      LINE Developersの「LINEミニアプリ」チャネル →
+      「ウェブアプリ設定」タブに表示されるLIFF IDを貼る
+      (例:"1234567890-AbCdEfGh")
+   ② GAS_URL:
+      次のステップで作るGAS(受け取りプログラム)を
+      「ウェブアプリとして公開」したときのURLを貼る
+      (https://script.google.com/macros/s/～/exec の形)
+============================================================ */
+const LIFF_ID = "2010670677-ypocErXM";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyYKCsCSmnRNTS2PfTJwC-n5QRXA5GwE0wbBVHxQoTLSly-ad2VyKSfRzG3ECvwjHlA/exec";
+
+/* ============================================================
+   【スタッフ名簿】初回登録のときに選ぶ名前の一覧
+   スタッフが増えたら、この一覧に1行足すだけでOKです
+============================================================ */
+const STAFF_LIST = [
+  "鷹取望美", "上原柚希", "三田谷美乃", "晒里依", "中山真央",
+  "久世向日葵", "山田浩希", "方村弥鈴", "尾藤千里"
+];
+/* ========================================================= */
+
+
+/* ---- 以下は触らなくて動きます ---- */
+
+let profile = { userId: "", registeredName: "" };
+let isTestMode = false;   // LINEの外で開いたとき用
+let isFirstTime = false;  // 初回(名前が未登録)のとき用
+
+// 時間のプルダウン(0〜12時間、0.5刻み)を自動で作る
+function fillTimeSelect(id, def){
+  const sel = document.getElementById(id);
+  for(let v = 0; v <= 12; v += 0.5){
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v.toFixed(1);
+    if(v === def) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+["f_kinmu","f_houmon_time","f_kiroku_time","f_houkoku_time",
+ "f_renkei_time","f_kyoiku_time","f_kaizen_time","f_sonota_time"]
+ .forEach((id) => fillTimeSelect(id, id === "f_kinmu" ? 8 : 0));
+
+// 日付の初期値=今日
+document.getElementById("f_date").value = new Date().toLocaleDateString("sv-SE");
+
+// 件数の −/+ ボタン
+function step(id, d){
+  const el = document.getElementById(id);
+  let v = parseInt(el.textContent, 10) + d;
+  if(v < 0) v = 0;
+  if(v > 30) v = 30;
+  el.textContent = v;
+}
+
+function showError(msg){
+  const box = document.getElementById("errorBox");
+  box.textContent = msg;
+  box.style.display = "block";
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+// ---- 起動時:LIFFの初期化 → 名前の確認 ----
+window.addEventListener("load", async () => {
+  if (typeof liff === "undefined") { enterTestMode("部品の読み込みに失敗"); return; }
+  try {
+    await liff.init({ liffId: LIFF_ID });
+
+    // LINEアプリの外(パソコン等)で開いた場合はテストモードへ
+    if (!liff.isInClient() && !liff.isLoggedIn()) {
+      enterTestMode("LINEの外で開いています");
+      return;
+    }
+
+    // ミニアプリでは、名前を読む前に「許可」を一度もらう必要がある
+    try {
+      const st = await liff.permission.query("profile");
+      if (st.state === "prompt") { await liff.permission.requestAll(); }
+    } catch(e) { /* この機能がないチャネルではそのまま進む */ }
+
+    const p = await liff.getProfile();
+    profile.userId = p.userId;
+
+    // GASに「この人は登録済み?」と問い合わせる
+    checkRegistered(p.userId);
+
+  } catch (err) {
+    enterTestMode(err && err.message ? err.message : "初期化エラー");
+  }
+});
+
+// 登録済みかどうかをGASに確認する
+function checkRegistered(userId){
+  // GAS_URLが未設定なら初回登録画面へ
+  if (GAS_URL.indexOf("http") !== 0) { enterFirstTime(); return; }
+
+  fetch(GAS_URL + "?mode=whoami&userId=" + encodeURIComponent(userId))
+    .then((res) => res.json())
+    .then((json) => {
+      if (json && json.name) {
+        // 登録済み → 自動表示
+        profile.registeredName = json.name;
+        document.getElementById("userName").textContent = json.name + " さん";
+        document.getElementById("userNote").textContent =
+          "登録済みのお名前を自動で表示しています。";
+      } else {
+        enterFirstTime();  // 未登録 → 初回登録画面
+      }
+    })
+    .catch(() => enterFirstTime());
+}
+
+// 初回:名前を選んでもらう
+function enterFirstTime(){
+  isFirstTime = true;
+  const box = document.getElementById("nameBox");
+  box.classList.add("first");
+  let options = '<option value="">(選択してください)</option>';
+  STAFF_LIST.forEach((n) => { options += '<option>' + n + '</option>'; });
+  box.innerHTML =
+    '<div class="who">はじめての方へ</div>' +
+    '<div class="note">お名前を選んでください。次回からは自動で表示され、この画面は出ません。</div>' +
+    '<select id="firstName">' + options + '</select>';
+}
+
+// テストモード:LINEの外でも動作確認できるように名前を手入力に
+function enterTestMode(reason){
+  isTestMode = true;
+  const box = document.getElementById("nameBox");
+  box.classList.add("testmode");
+  box.innerHTML =
+    '<div class="who">テストモード</div>' +
+    '<div class="note">LINEの外で開いているため、名前を手入力してください(' + reason + ')</div>' +
+    '<input type="text" id="testName" placeholder="氏名を入力">';
+}
+
+// ---- 送信 ----
+function submitForm(){
+  document.getElementById("errorBox").style.display = "none";
+
+  // 名前を確定させる
+  let name = profile.registeredName;
+  if (isTestMode) {
+    name = document.getElementById("testName").value.trim();
+    if(!name){ showError("氏名を入力してください(テストモード)"); return; }
+    profile.userId = "test";
+  } else if (isFirstTime) {
+    name = document.getElementById("firstName").value;
+    if(!name){ showError("お名前を選んでください(初回のみ)"); return; }
+  }
+
+  // かんたんチェック
+  const houmonKen = parseInt(document.getElementById("f_houmon_ken").textContent, 10);
+  const houmonTime = parseFloat(document.getElementById("f_houmon_time").value);
+  if(houmonKen > 0 && houmonTime === 0){
+    showError("訪問件数がありますが、訪問・移動時間が0のままです。ご確認ください。");
+    return;
+  }
+  const renkeiTime = parseFloat(document.getElementById("f_renkei_time").value);
+  const renkeiNaiyo = document.getElementById("f_renkei_naiyo").value;
+  if(renkeiTime > 0 && renkeiNaiyo === ""){
+    showError("連携時間がありますが、主な連携内容が選ばれていません。ご確認ください。");
+    return;
+  }
+
+  const data = {
+    userId: profile.userId,
+    name: name,
+    firstTime: isFirstTime,   // 初回ならGAS側で名簿にひも付け登録する
+    date: document.getElementById("f_date").value,
+    kinmu: document.getElementById("f_kinmu").value,
+    houmonKen: houmonKen,
+    houmonTime: houmonTime,
+    kirokuTime: document.getElementById("f_kiroku_time").value,
+    houkokuKen: document.getElementById("f_houkoku_ken").textContent,
+    houkokuTime: document.getElementById("f_houkoku_time").value,
+    renkeiKen: document.getElementById("f_renkei_ken").textContent,
+    renkeiTime: renkeiTime,
+    renkeiNaiyo: renkeiNaiyo,
+    kyoikuKen: document.getElementById("f_kyoiku_ken").textContent,
+    kyoikuTime: document.getElementById("f_kyoiku_time").value,
+    kyoikuNaiyo: document.getElementById("f_kyoiku_naiyo").value,
+    kaizenKen: document.getElementById("f_kaizen_ken").textContent,
+    kaizenTime: document.getElementById("f_kaizen_time").value,
+    kaizenNaiyo: document.getElementById("f_kaizen_naiyo").value,
+    sonotaTime: document.getElementById("f_sonota_time").value,
+    sonotaNaiyo: document.getElementById("f_sonota_naiyo").value
+  };
+
+  // 二重送信を防ぐ
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "送信中…";
+
+  fetch(GAS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },  // この形にするとGASが受け取りやすい
+    body: JSON.stringify(data)
+  })
+  .then(() => {
+    document.getElementById("formPage").style.display = "none";
+    document.getElementById("submitBar").style.display = "none";
+    document.getElementById("donePage").style.display = "block";
+    if (isFirstTime) {
+      document.getElementById("doneMsg").innerHTML =
+        name + " さんとして登録しました。<br>次回からはお名前が自動で表示されます。";
+    }
+  })
+  .catch((err) => {
+    btn.disabled = false;
+    btn.textContent = "この内容で送信する";
+    showError("送信に失敗しました。電波の良い場所でもう一度お試しください。");
+    console.error(err);
+  });
+}
+
+// 閉じるボタン
+function closeApp(){
+  if(!isTestMode && typeof liff !== "undefined" && liff.closeWindow){
+    liff.closeWindow();
+  } else {
+    document.getElementById("doneMsg").innerHTML = "この画面は閉じてかまいません。";
+  }
+}
+</script>
+</body>
+</html>
