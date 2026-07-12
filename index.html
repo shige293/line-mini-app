@@ -384,7 +384,7 @@ let isFirstTime = false;  // 初回(名前が未登録)のとき用
 // 時間のプルダウン(0〜12時間、0.5刻み)を自動で作る
 function fillTimeSelect(id, def){
   const sel = document.getElementById(id);
-  for(let v = 0; v <= 12; v += 0.5){
+  for(let v = 0; v <= 8; v += 0.1){
     const opt = document.createElement("option");
     opt.value = v;
     opt.textContent = v.toFixed(1);
