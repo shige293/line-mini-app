@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>業務実態調査|結果を見る</title>
+
+<!-- ============================================================
+  調査結果ページ(LINEミニアプリ版)
+  見せるもの:全体の傾向+開いた本人自身の結果だけ
+  他人の個人別データは表示されません
+  非エンジニアの方へ:書き換えるのは【設定エリア】の2行だけです
+============================================================ -->
+
+<style>
+  :root{
+    --green:#06C755;
+    --ink:#1f2a24;
+    --ink-sub:#5f6b64;
+    --line:#e3e8e5;
+    --bg:#fafbfa;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+    background:var(--bg);color:var(--ink);
+    -webkit-text-size-adjust:100%;
+  }
+  .container{max-width:480px;margin:0 auto;padding:16px 14px 40px;}
+  h1{font-size:16px;margin-bottom:4px;}
+  .period{font-size:11px;color:var(--ink-sub);margin-bottom:14px;}
+
+  .card{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:16px 14px;margin-bottom:14px;
+  }
+  .card h2{
+    font-size:13px;color:var(--ink);font-weight:700;margin-bottom:12px;
+    padding-left:8px;border-left:4px solid var(--green);
+  }
+
+  /* 横棒グラフ */
+  .bar-row{margin-bottom:10px;}
+  .bar-label{
+    display:flex;justify-content:space-between;
+    font-size:12px;margin-bottom:3px;
+  }
+  .bar-label .pct{font-weight:700;}
+  .bar-track{
+    background:#eef2ef;border-radius:6px;height:18px;overflow:hidden;
+  }
+  .bar-fill{
+    height:100%;border-radius:6px;
+    background:var(--green);
+    transition:width .6s ease;
+    min-width:2px;
+  }
+  .bar-fill.c2{background:#3fb977;}
+  .bar-fill.c3{background:#7ccf9f;}
+  .bar-fill.c4{background:#f0b45a;}
+  .bar-fill.c5{background:#8fa7e8;}
+  .bar-fill.c6{background:#c4cdc7;}
+
+  /* 自分の結果 */
+  .me-stats{display:flex;gap:10px;margin-bottom:12px;}
+  .stat{
+    flex:1;background:#eefaf3;border:1px solid #bfe8d2;
+    border-radius:10px;padding:10px;text-align:center;
+  }
+  .stat .num{font-size:22px;font-weight:800;color:var(--ink);}
+  .stat .unit{font-size:11px;font-weight:600;}
+  .stat .lbl{font-size:10px;color:var(--ink-sub);margin-top:2px;}
+  .compare{
+    font-size:12px;line-height:1.8;background:var(--bg);
+    border-radius:10px;padding:10px 12px;
+  }
+  .compare b{color:var(--green);}
+
+  .note{
+    font-size:10.5px;color:var(--ink-sub);line-height:1.7;
+    margin-top:4px;
+  }
+  #loading{text-align:center;padding:60px 0;color:var(--ink-sub);font-size:13px;}
+  #errorBox{
+    display:none;background:#fdeeee;border:1px solid #f2c4c4;
+    border-radius:10px;padding:12px;font-size:13px;color:#a33;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>業務実態調査|結果</h1>
+  <div class="period" id="period">集計中のデータをもとに表示しています</div>
+
+  <div id="loading">結果を読み込んでいます…</div>
+  <div id="errorBox"></div>
+
+  <div id="content" style="display:none">
+
+    <!-- 全体の傾向 -->
+    <div class="card">
+      <h2>みんなの時間の使い方(全体)</h2>
+      <div id="overallBars"></div>
+      <div class="note">
+        入力された時間全体に占める割合です。個人名は表示されません。
+      </div>
+    </div>
+
+    <!-- 自分の結果 -->
+    <div class="card" id="mineCard" style="display:none">
+      <h2><span id="myName"></span>さんの結果</h2>
+      <div class="me-stats">
+        <div class="stat">
+          <div><span class="num" id="myDays">0</span><span class="unit">日</span></div>
+          <div class="lbl">入力日数</div>
+        </div>
+        <div class="stat">
+          <div><span class="num" id="myKirokuMin">–</span><span class="unit">分</span></div>
+          <div class="lbl">訪問1件あたりの記録</div>
+        </div>
+      </div>
+      <div class="compare" id="compareBox"></div>
+      <div style="margin-top:12px" id="mineBars"></div>
+      <div class="note">
+        この欄はあなた自身にしか表示されません。数字は良し悪しの評価ではなく、
+        業務の負担を見つけて減らすための材料です。
+      </div>
+    </div>
+
+    <!-- 未登録の人向け -->
+    <div class="card" id="noRegCard" style="display:none">
+      <h2>あなたの結果</h2>
+      <div class="note" style="font-size:12px">
+        まだ入力の登録がありません。[今日の入力]から最初の入力をすると、
+        ここにあなたの結果が表示されるようになります。
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- LINEの部品(LIFF SDK・公式)を読み込む -->
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<script>
+/* ============================================================
+   【設定エリア】書き換えるのはこの2行だけ!
+   ※入力フォーム(index.html)と同じ値を貼ってください
+============================================================ */
+const LIFF_ID = "2010670677-ypocErXM";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyYKCsCSmnRNTS2PfTJwC-n5QRXA5GwE0wbBVHxQoTLSly-ad2VyKSfRzG3ECvwjHlA/exec";
+/* ========================================================= */
+
+/* ---- 以下は触らなくて動きます ---- */
+
+const CATS = [
+  { key: "houmon", label: "訪問・移動", cls: "" },
+  { key: "kiroku", label: "記録",       cls: "c2" },
+  { key: "houkoku", label: "報告書",    cls: "c3" },
+  { key: "renkei", label: "連携",       cls: "c4" },
+  { key: "kaizen", label: "教育・改善", cls: "c5" },
+  { key: "sonota", label: "その他",     cls: "c6" }
+];
+
+window.addEventListener("load", async () => {
+  let userId = "test";
+  try {
+    if (typeof liff !== "undefined") {
+      await liff.init({ liffId: LIFF_ID });
+      if (liff.isInClient() || liff.isLoggedIn()) {
+        try {
+          const st = await liff.permission.query("profile");
+          if (st.state === "prompt") { await liff.permission.requestAll(); }
+        } catch(e) {}
+        const p = await liff.getProfile();
+        userId = p.userId;
+      }
+    }
+  } catch(e) { /* LINE外→全体のみ表示 */ }
+
+  fetch(GAS_URL + "?mode=stats&userId=" + encodeURIComponent(userId))
+    .then((res) => res.json())
+    .then(render)
+    .catch(() => {
+      document.getElementById("loading").style.display = "none";
+      const box = document.getElementById("errorBox");
+      box.textContent = "結果を読み込めませんでした。電波の良い場所でもう一度開いてください。";
+      box.style.display = "block";
+    });
+});
+
+function bars(containerId, data) {
+  // dataの6カテゴリ合計に対する割合で横棒を描く
+  let total = 0;
+  CATS.forEach((c) => { total += (data[c.key] || 0); });
+  const el = document.getElementById(containerId);
+  el.innerHTML = "";
+  if (total <= 0) {
+    el.innerHTML = '<div class="note">まだ表示できるデータがありません。</div>';
+    return;
+  }
+  CATS.forEach((c) => {
+    const v = data[c.key] || 0;
+    const pct = Math.round(v / total * 100);
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML =
+      '<div class="bar-label"><span>' + c.label + '</span>' +
+      '<span class="pct">' + pct + '%</span></div>' +
+      '<div class="bar-track"><div class="bar-fill ' + c.cls + '" style="width:' + pct + '%"></div></div>';
+    el.appendChild(row);
+  });
+}
+
+function render(json) {
+  document.getElementById("loading").style.display = "none";
+
+  if (!json || !json.overall) {
+    const box = document.getElementById("errorBox");
+    box.textContent = "まだ入力データがありません。調査が始まると結果が表示されます。";
+    box.style.display = "block";
+    return;
+  }
+
+  document.getElementById("content").style.display = "block";
+  if (json.period) document.getElementById("period").textContent = json.period;
+
+  // 全体
+  bars("overallBars", json.overall);
+
+  // 自分
+  if (json.mine && json.mine.days > 0) {
+    document.getElementById("mineCard").style.display = "block";
+    document.getElementById("myName").textContent = json.mine.name || "あなた";
+    document.getElementById("myDays").textContent = json.mine.days;
+
+    const my = json.mine.kirokuPerVisit;
+    const avg = json.overall.kirokuPerVisit;
+    document.getElementById("myKirokuMin").textContent = (my != null) ? my : "–";
+
+    let cmp = "";
+    if (my != null && avg != null) {
+      cmp += "全体平均は訪問1件あたり <b>" + avg + "分</b> です。";
+    }
+    if (json.mine.houkokuPerCount != null && json.overall.houkokuPerCount != null) {
+      cmp += "<br>報告書はあなたが1件あたり <b>" + json.mine.houkokuPerCount +
+             "分</b>(全体平均 " + json.overall.houkokuPerCount + "分)。";
+    }
+    document.getElementById("compareBox").innerHTML =
+      cmp || "入力が増えると、平均との比較が表示されます。";
+
+    bars("mineBars", json.mine);
+  } else {
+    document.getElementById("noRegCard").style.display = "block";
+  }
+}
+</script>
+</body>
+</html>
